@@ -14,14 +14,15 @@ func main() {
 	host := os.Getenv("SSH_HOST")
 	username := os.Getenv("SSH_USERNAME")
 	password := os.Getenv("SSH_PASSWORD")
-	downloadURL := os.Getenv("GIF_URL")
+	downloadWelcomeURL := os.Getenv("GIF_WELCOME_URL")
+	downloadRingURL := os.Getenv("GIF_RING_URL")
 
 	if host == "" || username == "" || password == "" {
 		log.Fatal("Please set SSH_HOST, SSH_USERNAME, and SSH_PASSWORD environment variables.")
 	}
 
 	for {
-		err := runSSH(host, username, password, downloadURL)
+		err := runSSH(host, username, password, downloadWelcomeURL, downloadRingURL)
 		if err != nil {
 			log.Println("Error in SSH connection:", err)
 		}
@@ -31,7 +32,7 @@ func main() {
 	}
 }
 
-func runSSH(host, username, password, downloadURL string) error {
+func runSSH(host, username, password, downloadWelcomeURL, downloadRingURL string) error {
 	// Initialize SSH configuration
 	config := &ssh.ClientConfig{
 		User: username,
@@ -49,7 +50,13 @@ func runSSH(host, username, password, downloadURL string) error {
 	defer client.Close()
 
 	// on the very first run download a new image, the mounting logic should be fine.
-	err = downloadFile(client, downloadURL, "/mnt/log/custom.png")
+	err = downloadFile(client, downloadWelcomeURL, "/mnt/log/welcome.png")
+	if err != nil {
+		log.Println("Error downloading file:", err)
+	}
+
+	// on the very first run download a new image, the mounting logic should be fine.
+	err = downloadFile(client, downloadRingURL, "/mnt/log/ring.png")
 	if err != nil {
 		log.Println("Error downloading file:", err)
 	}
@@ -57,29 +64,42 @@ func runSSH(host, username, password, downloadURL string) error {
 	// Infinite loop to maintain the SSH connection
 	for {
 		// Check if the /usr/etc/gui/screen_240x240/Welcome_Anim_60.png is mounted
-		isMounted, err := isFileMounted(client)
+		isWelcomeMounted, err := isWelcomeMounted(client)
 		if err != nil {
-			log.Println("Error checking mount status:", err)
-		} else if isMounted {
-			fmt.Println("File is mounted!")
+			log.Println("Error checking welcome mount status:", err)
+			return err
+		} else if isWelcomeMounted {
+			fmt.Println("Welcome image is mounted!")
 		} else {
-			fmt.Println("File is not mounted, download and mount.")
-
-			err = downloadFile(client, downloadURL, "/mnt/log/custom.png")
+			fmt.Println("Welcome image not mounted, mounting now.")
+			_, err = mountWelcomeScreen(client)
 			if err != nil {
-				log.Println("Error downloading file:", err)
-			}
-			isMounted, err = mountFile(client)
-			if err != nil {
-				log.Println("Error mounting file:", err)
+				log.Println("Error mounting welcome image:", err)
+				return err
 			}
 		}
+
+		isRingMounted, err := isRingMounted(client)
+		if err != nil {
+			log.Println("Error checking ring mount status:", err)
+			return err
+		} else if isRingMounted {
+			fmt.Println("Ring image is mounted!")
+		} else {
+			fmt.Println("Ring image not mounted, mounting now.")
+			_, err = mountRingScreen(client)
+			if err != nil {
+				log.Println("Error mounting ring image:", err)
+				return err
+			}
+		}
+
 		// Wait for 30 seconds before checking again
 		time.Sleep(30 * time.Second)
 	}
 }
 
-func isFileMounted(client *ssh.Client) (bool, error) {
+func isWelcomeMounted(client *ssh.Client) (bool, error) {
 	// Execute the 'mount' command on the remote server
 	session, err := client.NewSession()
 	if err != nil {
@@ -96,7 +116,7 @@ func isFileMounted(client *ssh.Client) (bool, error) {
 	return strings.Contains(string(output), "/usr/etc/gui/screen_240x240/Welcome_Anim_60.png"), nil
 }
 
-func mountFile(client *ssh.Client) (bool, error) {
+func isRingMounted(client *ssh.Client) (bool, error) {
 	// Execute the 'mount' command on the remote server
 	session, err := client.NewSession()
 	if err != nil {
@@ -104,7 +124,39 @@ func mountFile(client *ssh.Client) (bool, error) {
 	}
 	defer session.Close()
 
-	_, err = session.CombinedOutput("mount -o bind /mnt/log/custom.png /usr/etc/gui/screen_240x240/Welcome_Anim_60.png")
+	output, err := session.CombinedOutput("mount")
+	if err != nil {
+		return false, fmt.Errorf("Failed to execute command: %v", err)
+	}
+
+	// Check if the file path is present in the 'mount' output
+	return strings.Contains(string(output), "/usr/etc/gui/screen_240x240/Ringing_Anim_48.png"), nil
+}
+
+func mountWelcomeScreen(client *ssh.Client) (bool, error) {
+	// Execute the 'mount' command on the remote server
+	session, err := client.NewSession()
+	if err != nil {
+		return false, fmt.Errorf("Failed to create session: %v", err)
+	}
+	defer session.Close()
+
+	_, err = session.CombinedOutput("mount -o bind /mnt/log/welcome.png /usr/etc/gui/screen_240x240/Welcome_Anim_60.png")
+	if err != nil {
+		return false, fmt.Errorf("Failed to execute command: %v", err)
+	}
+	return true, nil
+}
+
+func mountRingScreen(client *ssh.Client) (bool, error) {
+	// Execute the 'mount' command on the remote server
+	session, err := client.NewSession()
+	if err != nil {
+		return false, fmt.Errorf("Failed to create session: %v", err)
+	}
+	defer session.Close()
+
+	_, err = session.CombinedOutput("mount -o bind /mnt/log/ring.png /usr/etc/gui/screen_240x240/Ringing_Anim_48.png")
 	if err != nil {
 		return false, fmt.Errorf("Failed to execute command: %v", err)
 	}
