@@ -61,6 +61,15 @@ func runSSH(host, username, password, downloadWelcomeURL, downloadRingURL string
 		log.Println("Error downloading file:", err)
 	}
 
+	// lets assume a reboot if we are here and kill the gui screen service.
+
+	time.Sleep(60 * time.Second)
+
+	_, err = killLCMGUIProcess(client)
+	if err != nil {
+		log.Println("The LCM service did not reboot:", err)
+	}
+
 	// Infinite loop to maintain the SSH connection
 	for {
 		// Check if the /usr/etc/gui/screen_240x240/Welcome_Anim_60.png is mounted
@@ -142,6 +151,21 @@ func mountWelcomeScreen(client *ssh.Client) (bool, error) {
 	defer session.Close()
 
 	_, err = session.CombinedOutput("mount -o bind /mnt/log/welcome.png /usr/etc/gui/screen_240x240/Welcome_Anim_60.png")
+	if err != nil {
+		return false, fmt.Errorf("Failed to execute command: %v", err)
+	}
+	return true, nil
+}
+
+func killLCMGUIProcess(client *ssh.Client) (bool, error) {
+	// Execute the 'mount' command on the remote server
+	session, err := client.NewSession()
+	if err != nil {
+		return false, fmt.Errorf("Failed to create session: %v", err)
+	}
+	defer session.Close()
+
+	_, err = session.CombinedOutput("pkill 'ubnt_lcm_gui'")
 	if err != nil {
 		return false, fmt.Errorf("Failed to execute command: %v", err)
 	}
