@@ -63,12 +63,7 @@ func runSSH(host, username, password, downloadWelcomeURL, downloadRingURL string
 
 	// lets assume a reboot if we are here and kill the gui screen service.
 
-	time.Sleep(60 * time.Second)
-
-	_, err = killLCMGUIProcess(client)
-	if err != nil {
-		log.Println("The LCM service did not reboot:", err)
-	}
+	time.Sleep(120 * time.Second)
 
 	// Infinite loop to maintain the SSH connection
 	for {
